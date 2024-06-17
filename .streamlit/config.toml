@@ -1,0 +1,8 @@
+# .streamlit/config.toml
+
+[theme]
+primaryColor = "#4B0082"         # Indigo color for primary elements
+backgroundColor = "#1E1E2E"      # Dark blue background
+secondaryBackgroundColor = "#2E2E4E"  # Slightly lighter dark blue for secondary backgrounds
+textColor = "#F0E6FF"            # Light purple/white text color
+font = "sans serif"
