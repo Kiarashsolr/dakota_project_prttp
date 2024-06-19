@@ -32,7 +32,7 @@ if passcode != app_passcode:
 
 # Sidebar
 # Add company logo
-st.sidebar.image('company_logo.svg', width=100)  # Adjust width to make the logo smaller
+st.sidebar.image('company_logo.svg', width=50)  # Adjust width to make the logo smaller
 
 st.sidebar.title("Dakota")
 
@@ -156,4 +156,83 @@ if selected_song:
     else:
         st.write("No data available for the selected song.")
 else:
-    st.write("Choose a song from the side menu")
+    # Checkbox to filter distrokid songs in the latest top songs
+    filter_distrokid_top_songs = st.checkbox('Show only distrokid songs in latest top songs')
+
+    # Show the latest top songs
+    st.header("Latest Top Songs")
+
+    # Retrieve the latest top songs by the latest timestamp
+    song_data_df = db.get_song_data()
+    latest_timestamp = song_data_df['timestamp'].max()
+    latest_top_songs = song_data_df[song_data_df['timestamp'] == latest_timestamp]
+
+    if filter_distrokid_top_songs:
+        latest_top_songs = latest_top_songs[latest_top_songs['distrokid'] == True]
+
+    for index, row in latest_top_songs.iterrows():
+        # Fetch song details from Spotify
+        search_results = spotify.search(q=f"track:{row['title']} artist:{row['author']}", type='track')
+        if search_results['tracks']['items']:
+            track = search_results['tracks']['items'][0]
+            album_cover_url = track['album']['images'][0]['url']
+            preview_url = track['preview_url']
+
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                if album_cover_url:
+                    st.image(album_cover_url, use_column_width=True)
+                    if preview_url:
+                        st.audio(preview_url, format='audio/mp3')
+
+            with col2:
+                st.subheader(row['title'])
+                st.write(f"**Author:** {row['author']}")
+                
+                # Calculate popularity and view count changes
+                previous_day_data = song_data_df[(song_data_df['title'] == row['title']) & 
+                                                 (song_data_df['author'] == row['author']) & 
+                                                 (song_data_df['timestamp'] < latest_timestamp)].sort_values('timestamp').tail(1)
+
+                if not previous_day_data.empty:
+                    prev_popularity = previous_day_data.iloc[0]['popularity']
+                    prev_view_count = previous_day_data.iloc[0].get('viewCount', None)
+
+                    popularity_change = row['popularity'] - prev_popularity
+                    if popularity_change > 0:
+                        st.write(f"**Popularity:** {row['popularity']} (⬆️ {popularity_change})")
+                    elif popularity_change < 0:
+                        st.write(f"**Popularity:** {row['popularity']} (⬇️ {popularity_change})")
+                    else:
+                        st.write(f"**Popularity:** {row['popularity']} (No change)")
+
+                    if prev_view_count is not None and 'viewCount' in row and row['viewCount'] is not None:
+                        view_count_change = row['viewCount'] - prev_view_count
+                        if prev_view_count > 0:
+                            view_count_percentage_change = (view_count_change / prev_view_count) * 100
+                            color = 'red'
+                            if view_count_percentage_change >= 30:
+                                color = 'blue'
+                            elif view_count_percentage_change >= 10:
+                                color = 'lightgreen'
+                            st.markdown(f"**View Count:** {row['viewCount']} (<span style='color:{color}'>+{view_count_percentage_change:.2f}%</span>)", unsafe_allow_html=True)
+                        else:
+                            st.write(f"**View Count:** {row['viewCount']} (N/A)")
+                    else:
+                        st.write(f"**View Count:** {row.get('viewCount', 'N/A')}")
+                else:
+                    st.write(f"**Popularity:** {row['popularity']}")
+                    st.write(f"**View Count:** {row.get('viewCount', 'N/A')}")
+
+
+
+# # Button to upload JSON files (for temporary use)
+# if st.button('Upload JSON files'):
+#     db.upload_json_files()
+#     st.success('Files uploaded successfully!')
+
+# # Button to delete all songs
+# if st.button('Delete all songs'):
+#     result = db.delete_all_songs()
+#     st.success(result)
+
