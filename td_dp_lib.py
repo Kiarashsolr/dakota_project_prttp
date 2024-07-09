@@ -28,12 +28,17 @@ class Song:
         self.album = data.get('album')
         self.release_date = data.get('release_date')
         self.duration_ms = data.get('duration_ms')
-        self.distrokid = data.get('distrokid')
-        self.trackedVideo = data.get('trackedVideo', {})
-        self.viewCount = self.trackedVideo.get('viewCount', None)
         self.timestamp = data.get('timestamp')
         self.note = data.get('note')
         self.all_occurrences = all_occurrences
+        
+        # New attributes
+        self.detail_url = data.get('detail_url')
+        self.interest_names = data.get('interest_names', [])
+        self.age_distribution = data.get('age_distribution', {})
+        self.top_regions = data.get('top_regions', [])
+        self.description = data.get('description')
+        self.streamCountData = data.get('streamCountData', {})
 
     def graphs_7(self, index=0):
         """
@@ -55,8 +60,8 @@ class DataLib:
         :param connection_string: str, the connection string for MongoDB Atlas
         """
         self.client = MongoClient(connection_string, server_api=ServerApi('1'))
-        self.db_name = 'music_trends'  # Hardcoded database name
-        self.collection_name = 'daily_trends'  # Hardcoded collection name
+        self.db_name = 'music_trends'
+        self.collection_name = 'daily_trends'
         self.db = self.client[self.db_name]
 
         # Test the connection
@@ -73,12 +78,11 @@ class DataLib:
         :param data: list of dict, the data to upload
         """
         collection = self.db[self.collection_name]
-        # Ensure viewCount is properly handled
+        # Process the new data structure
         for item in data:
-            if 'trackedVideo' in item and 'viewCount' in item['trackedVideo']:
-                item['viewCount'] = item['trackedVideo']['viewCount']
-            else:
-                item['viewCount'] = None
+            # Convert timestamp to datetime object if it's a string
+            if isinstance(item.get('timestamp'), str):
+                item['timestamp'] = datetime.fromisoformat(item['timestamp'].replace('Z', '+00:00'))
         collection.insert_many(data)
         print(f"Inserted {len(data)} documents into the collection {self.collection_name}")
 
@@ -127,22 +131,25 @@ class DataLib:
                     'title': data['title'],
                     'author': data['author'],
                     'graph_values': data['graph_values'],
-                    'acousticness': data['acousticness'],
-                    'danceability': data['danceability'],
-                    'energy': data['energy'],
-                    'instrumentalness': data['instrumentalness'],
-                    'liveness': data['liveness'],
-                    'speechiness': data['speechiness'],
-                    'valence': data['valence'],
-                    'popularity': data['popularity'],
-                    'album': data['album'],
-                    'release_date': data['release_date'],
-                    'duration_ms': data['duration_ms'],
-                    'distrokid': data['distrokid'],
-                    'trackedVideo': data.get('trackedVideo', {}),
-                    'viewCount': data.get('trackedVideo', {}).get('viewCount', None),
+                    'acousticness': data.get('acousticness'),
+                    'danceability': data.get('danceability'),
+                    'energy': data.get('energy'),
+                    'instrumentalness': data.get('instrumentalness'),
+                    'liveness': data.get('liveness'),
+                    'speechiness': data.get('speechiness'),
+                    'valence': data.get('valence'),
+                    'popularity': data.get('popularity'),
+                    'album': data.get('album'),
+                    'release_date': data.get('release_date'),
+                    'duration_ms': data.get('duration_ms'),
                     'timestamp': data['timestamp'],
                     'note': data.get('note'),
+                    'detail_url': data.get('detail_url'),
+                    'interest_names': data.get('interest_names', []),
+                    'age_distribution': data.get('age_distribution', {}),
+                    'top_regions': data.get('top_regions', []),
+                    'description': data.get('description'),
+                    'streamCountData': data.get('streamCountData', {}),
                     'all_occurrences': [data]
                 }
             else:
@@ -174,22 +181,25 @@ class DataLib:
                     'title': data['title'],
                     'author': data['author'],
                     'graph_values': data['graph_values'],
-                    'acousticness': data['acousticness'],
-                    'danceability': data['danceability'],
-                    'energy': data['energy'],
-                    'instrumentalness': data['instrumentalness'],
-                    'liveness': data['liveness'],
-                    'speechiness': data['speechiness'],
-                    'valence': data['valence'],
-                    'popularity': data['popularity'],
-                    'album': data['album'],
-                    'release_date': data['release_date'],
-                    'duration_ms': data['duration_ms'],
-                    'distrokid': data['distrokid'],
-                    'trackedVideo': data.get('trackedVideo', {}),
-                    'viewCount': data.get('trackedVideo', {}).get('viewCount', None),
+                    'acousticness': data.get('acousticness'),
+                    'danceability': data.get('danceability'),
+                    'energy': data.get('energy'),
+                    'instrumentalness': data.get('instrumentalness'),
+                    'liveness': data.get('liveness'),
+                    'speechiness': data.get('speechiness'),
+                    'valence': data.get('valence'),
+                    'popularity': data.get('popularity'),
+                    'album': data.get('album'),
+                    'release_date': data.get('release_date'),
+                    'duration_ms': data.get('duration_ms'),
                     'timestamp': data['timestamp'],
                     'note': data.get('note'),
+                    'detail_url': data.get('detail_url'),
+                    'interest_names': data.get('interest_names', []),
+                    'age_distribution': data.get('age_distribution', {}),
+                    'top_regions': data.get('top_regions', []),
+                    'description': data.get('description'),
+                    'streamCountData': data.get('streamCountData', {}),
                     'all_occurrences': [data]
                 }
             else:
@@ -200,6 +210,94 @@ class DataLib:
                 aggregated_data[key]['all_occurrences'].append(data)
 
         return [Song(data, data['all_occurrences']) for data in aggregated_data.values()]
+
+    # New method to get top regions for a song
+    def get_top_regions(self, song_id):
+        """
+        Get the top regions for a specific song.
+
+        :param song_id: str, the ID of the song
+        :return: list, the top regions for the song
+        """
+        song = self.get_song_by_id(song_id)
+        return song.top_regions if song else []
+
+    # New method to get age distribution for a song
+    def get_age_distribution(self, song_id):
+        """
+        Get the age distribution for a specific song.
+
+        :param song_id: str, the ID of the song
+        :return: dict, the age distribution for the song
+        """
+        song = self.get_song_by_id(song_id)
+        return song.age_distribution if song else {}
+
+    # New method to analyze stream count data
+    def analyze_stream_count(self, song_id):
+        """
+        Analyze the stream count data for a specific song.
+
+        :param song_id: str, the ID of the song
+        :return: dict, analysis of the stream count data
+        """
+        song = self.get_song_by_id(song_id)
+        if not song or not song.streamCountData:
+            return None
+
+        stream_data = song.streamCountData
+        total_streams = max(data['total'] for data in stream_data.values() if isinstance(data, dict))
+        daily_average = sum(data['daily'] for data in stream_data.values() if isinstance(data, dict) and data['daily'] is not None) / len(stream_data)
+
+        return {
+            'total_streams': total_streams,
+            'daily_average': daily_average,
+            'data': stream_data
+        }
+
+    # ... (keep other existing methods)
+
+    def upload_json_files(self, directory='.'):
+        """
+        Scan the directory for JSON files and upload them to the collection.
+
+        :param directory: str, the directory to scan for JSON files (defaults to the current directory)
+        """
+        json_files = [f for f in os.listdir(directory) if f.endswith('.json') and f.startswith('trending_music_')]
+        if not json_files:
+            print("No JSON files found in the directory.")
+            return
+
+        print("Found the following JSON files:")
+        for file in json_files:
+            print(file)
+
+        confirm = input("Do you want to upload these files to the database? (yes/no): ")
+        if confirm.lower() != 'yes':
+            print("Upload cancelled.")
+            return
+
+        for file in json_files:
+            file_path = os.path.join(directory, file)
+            with open(file_path, 'r', encoding='utf-8') as f:
+                file_data = json.load(f)
+                data_to_upload = file_data['data']
+                for item in data_to_upload:
+                    item['timestamp'] = file_data['timestamp']
+                self.upload_data(data_to_upload)
+
+        print("All files have been uploaded successfully.")
+
+    # ... (keep other existing methods)
+        # Test the connection
+        try:
+            self.client.admin.command('ping')
+            print("Pinged your deployment. You successfully connected to MongoDB!")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+
+    
 
     def add_note_to_song(self, song_id, note):
         """
@@ -227,54 +325,7 @@ class DataLib:
         else:
             return f'Song with ID: {song_id} not found.'
 
-    def upload_json_files(self, directory='.'):
-        """
-        Scan the directory for JSON files and upload them to the collection.
-
-        :param directory: str, the directory to scan for JSON files (defaults to the current directory)
-        """
-        json_files = [f for f in os.listdir(directory) if f.endswith('.json') and f.startswith('trending_music_')]
-        if not json_files:
-            print("No JSON files found in the directory.")
-            return
-
-        print("Found the following JSON files:")
-        for file in json_files:
-            print(file)
-
-        confirm = input("Do you want to upload these files to the database? (yes/no): ")
-        if confirm.lower() != 'yes':
-            print("Upload cancelled.")
-            return
-
-        for file in json_files:
-            file_path = os.path.join(directory, file)
-            with open(file_path, 'r', encoding='utf-8') as f:
-                file_data = json.load(f)
-                file_data['timestamp'] = file.split('_')[-1].replace('.json', '')
-                data_to_upload = [{
-                    'title': item['title'],
-                    'author': item['author'],
-                    'graph_values': item['graph_values'],
-                    'acousticness': item.get('acousticness'),
-                    'danceability': item.get('danceability'),
-                    'energy': item.get('energy'),
-                    'instrumentalness': item.get('instrumentalness'),
-                    'liveness': item.get('liveness'),
-                    'speechiness': item.get('speechiness'),
-                    'valence': item.get('valence'),
-                    'popularity': item.get('popularity'),
-                    'album': item.get('album'),
-                    'release_date': item.get('release_date'),
-                    'duration_ms': item.get('duration_ms'),
-                    'distrokid': item.get('distrokid'),
-                    'trackedVideo': item.get('trackedVideo', {}),
-                    'viewCount': item.get('trackedVideo', {}).get('viewCount', None),
-                    'timestamp': file_data['timestamp']
-                } for item in file_data['data']]
-                self.upload_data(data_to_upload)
-
-        print("All files have been uploaded successfully.")
+    
 
     def filter_by_date_range(self, start_date, end_date):
         """

@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
+import logging
 
 # Load environment variables
 load_dotenv()
@@ -39,17 +40,11 @@ st.sidebar.title("Dakota")
 # Week/Month Selector
 timeframe = st.sidebar.selectbox('Select timeframe', ['Week', 'Month'])
 
-# Checkbox to filter distrokid artists
-filter_distrokid = st.sidebar.checkbox('Show only distrokid artists')
-
 # Unique Artists List
 st.sidebar.header("Artists")
 
 # Get unique artists
-if filter_distrokid:
-    unique_artists = [artist for artist in db.get_unique_artists() if any(song.distrokid for song in db.get_songs_by_author(artist))]
-else:
-    unique_artists = db.get_unique_artists()
+unique_artists = db.get_unique_artists()
 
 artist_selected = st.sidebar.selectbox('Select an artist', unique_artists)
 
@@ -75,41 +70,99 @@ if selected_song:
     
     if song_data:
         # Graph of the past seven days
-        latest_occurrence = song_data.all_occurrences[-1]
-        past_seven_days_graph = latest_occurrence['graph_values'][::-1]
-        x_labels = list(range(-7, 0))
-        fig1 = px.line(x=x_labels, y=past_seven_days_graph, labels={'x': 'Day', 'y': 'Value'}, title='Past 7 Days Graph')
-        st.plotly_chart(fig1)
+        try:
+            latest_occurrence = song_data.all_occurrences[-1]
+            past_seven_days_graph = latest_occurrence['graph_values'][::-1]
+            x_labels = list(range(-7, 0))
+            fig1 = px.line(x=x_labels, y=past_seven_days_graph, labels={'x': 'Day', 'y': 'Value'}, title='Past 7 Days Graph')
+            st.plotly_chart(fig1)
+        except Exception as e:
+            st.error(f"Error displaying past seven days graph: {e}")
         
         # Graph of all available popularity data
-        popularity_data = [occurrence['popularity'] for occurrence in song_data.all_occurrences if 'popularity' in occurrence]
-        popularity_dates = [occurrence['timestamp'] for occurrence in song_data.all_occurrences if 'popularity' in occurrence]
-        fig2 = px.line(x=popularity_dates, y=popularity_data, labels={'x': 'Date', 'y': 'Popularity'}, title='Popularity Over Time')
-        st.plotly_chart(fig2)
+        try:
+            popularity_data = [occurrence['popularity'] for occurrence in song_data.all_occurrences if 'popularity' in occurrence]
+            popularity_dates = [occurrence['timestamp'] for occurrence in song_data.all_occurrences if 'popularity' in occurrence]
+            fig2 = px.line(x=popularity_dates, y=popularity_data, labels={'x': 'Date', 'y': 'Popularity'}, title='Popularity Over Time')
+            st.plotly_chart(fig2)
+        except Exception as e:
+            st.error(f"Error displaying popularity data graph: {e}")
         
-        # Graph of all available view counts
-        view_counts = [occurrence['viewCount'] for occurrence in song_data.all_occurrences if 'viewCount' in occurrence and occurrence['viewCount'] is not None]
-        view_count_dates = [occurrence['timestamp'] for occurrence in song_data.all_occurrences if 'viewCount' in occurrence and occurrence['viewCount'] is not None]
-        if view_counts and view_count_dates:  # Ensure there is data to plot
-            fig3 = px.line(x=view_count_dates, y=view_counts, labels={'x': 'Date', 'y': 'View Count'}, title='View Count Over Time')
-            st.plotly_chart(fig3)
-        else:
-            st.write("No view count data available for this song.")
+        # Graph of total streams and daily streams
+        try:
+            total_stream_counts = []
+            daily_stream_counts = []
+            stream_count_dates = []
+            for date, counts in song_data.streamCountData.items():
+                if counts['total'] is not None:
+                    total_stream_counts.append(counts['total'])
+                    daily_stream_counts.append(counts['daily'] if counts['daily'] is not None else 0)
+                    stream_count_dates.append(date)
+            
+            if total_stream_counts and stream_count_dates:  # Ensure there is data to plot
+                fig3 = go.Figure()
+
+                # Add total stream counts as a line trace
+                fig3.add_trace(go.Scatter(
+                    x=stream_count_dates,
+                    y=total_stream_counts,
+                    name='Total Streams',
+                    mode='lines+markers',
+                    yaxis='y1'
+                ))
+
+                # Add daily stream counts as a bar trace
+                fig3.add_trace(go.Bar(
+                    x=stream_count_dates,
+                    y=daily_stream_counts,
+                    name='Daily Streams',
+                    yaxis='y2',
+                    opacity=0.6
+                ))
+
+                fig3.update_layout(
+                    title='Total Streams and Daily Streams Over Time',
+                    xaxis_title='Date',
+                    yaxis=dict(
+                        title='Total Streams',
+                        side='left'
+                    ),
+                    yaxis2=dict(
+                        title='Daily Streams',
+                        overlaying='y',
+                        side='right'
+                    ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        bgcolor='rgba(255, 255, 255, 0)',
+                        bordercolor='rgba(255, 255, 255, 0)'
+                    )
+                )
+
+                st.plotly_chart(fig3)
+            else:
+                st.write("No stream count data available for this song.")
+        except Exception as e:
+            st.error(f"Error displaying stream count data graph: {e}")
         
         # Fetch song details from Spotify
-        search_results = spotify.search(q=f"track:{selected_song} artist:{artist_selected}", type='track')
-        if search_results['tracks']['items']:
-            track = search_results['tracks']['items'][0]
-            album_cover_url = track['album']['images'][0]['url']
-            artist_image_url = None
-            if 'images' in track['artists'][0] and track['artists'][0]['images']:
-                artist_image_url = track['artists'][0]['images'][0]['url']
-            preview_url = track['preview_url']
-            if preview_url:
-                st.audio(preview_url, format='audio/mp3')
-            st.image(album_cover_url, caption='Album Cover', use_column_width=True)
-            if artist_image_url:
-                st.image(artist_image_url, caption='Artist Picture', use_column_width=True)
+        try:
+            search_results = spotify.search(q=f"track:{selected_song} artist:{artist_selected}", type='track')
+            if search_results['tracks']['items']:
+                track = search_results['tracks']['items'][0]
+                album_cover_url = track['album']['images'][0]['url']
+                artist_image_url = None
+                if 'images' in track['artists'][0] and track['artists'][0]['images']:
+                    artist_image_url = track['artists'][0]['images'][0]['url']
+                preview_url = track['preview_url']
+                if preview_url:
+                    st.audio(preview_url, format='audio/mp3')
+                st.image(album_cover_url, caption='Album Cover', use_column_width=True)
+                if artist_image_url:
+                    st.image(artist_image_url, caption='Artist Picture', use_column_width=True)
+        except Exception as e:
+            st.error(f"Error fetching song details from Spotify: {e}")
         
         # Convert duration to MM:SS format
         duration_minutes = song_data.duration_ms // 60000
@@ -117,34 +170,37 @@ if selected_song:
         duration_formatted = f"{duration_minutes}:{duration_seconds:02}"
         
         # Radar chart for song features
-        features = {
-            "Acousticness": song_data.acousticness,
-            "Danceability": song_data.danceability,
-            "Energy": song_data.energy,
-            "Instrumentalness": song_data.instrumentalness,
-            "Liveness": song_data.liveness,
-            "Speechiness": song_data.speechiness,
-            "Valence": song_data.valence,
-        }
+        try:
+            features = {
+                "Acousticness": song_data.acousticness,
+                "Danceability": song_data.danceability,
+                "Energy": song_data.energy,
+                "Instrumentalness": song_data.instrumentalness,
+                "Liveness": song_data.liveness,
+                "Speechiness": song_data.speechiness,
+                "Valence": song_data.valence,
+            }
 
-        categories = list(features.keys())
-        values = list(features.values())
-        
-        radar_fig = go.Figure(data=go.Scatterpolar(
-            r=values + values[:1],
-            theta=categories + categories[:1],
-            fill='toself'
-        ))
-        radar_fig.update_layout(
-            polar=dict(
-                radialaxis=dict(
-                    visible=True,
-                    range=[0, 1]
-                )),
-            showlegend=False,
-            title='Song Features'
-        )
-        st.plotly_chart(radar_fig)
+            categories = list(features.keys())
+            values = list(features.values())
+            
+            radar_fig = go.Figure(data=go.Scatterpolar(
+                r=values + values[:1],
+                theta=categories + categories[:1],
+                fill='toself'
+            ))
+            radar_fig.update_layout(
+                polar=dict(
+                    radialaxis=dict(
+                        visible=True,
+                        range=[0, 1]
+                    )),
+                showlegend=False,
+                title='Song Features'
+            )
+            st.plotly_chart(radar_fig)
+        except Exception as e:
+            st.error(f"Error displaying radar chart for song features: {e}")
         
         # Display additional song information
         st.subheader("Song Details")
@@ -153,12 +209,31 @@ if selected_song:
         st.write(f"**Album:** {song_data.album}")
         st.write(f"**Release Date:** {song_data.release_date}")
         st.write(f"**Duration:** {duration_formatted}")
+        st.write(f"**Description:** {song_data.description}")
+        
+        # Display interest names
+        st.subheader("Interest Names")
+        for interest in song_data.interest_names:
+            st.write(f"- {interest}")
+        
+        # Display age distribution
+        st.subheader("Age Distribution")
+        try:
+            age_distribution_df = pd.DataFrame(list(song_data.age_distribution.items()), columns=['Age Group', 'Percentage'])
+            st.bar_chart(age_distribution_df.set_index('Age Group'))
+        except Exception as e:
+            st.error(f"Error displaying age distribution: {e}")
+        
+        # Display top regions
+        st.subheader("Top Regions")
+        try:
+            for region in song_data.top_regions:
+                st.write(f"**{region['rank']}:** {region['country']} (Score: {region['score']})")
+        except Exception as e:
+            st.error(f"Error displaying top regions: {e}")
     else:
         st.write("No data available for the selected song.")
 else:
-    # Checkbox to filter distrokid songs in the latest top songs
-    filter_distrokid_top_songs = st.checkbox('Show only distrokid songs in latest top songs')
-
     # Show the latest top songs
     st.header("Latest Top Songs")
 
@@ -167,72 +242,79 @@ else:
     latest_timestamp = song_data_df['timestamp'].max()
     latest_top_songs = song_data_df[song_data_df['timestamp'] == latest_timestamp]
 
-    if filter_distrokid_top_songs:
-        latest_top_songs = latest_top_songs[latest_top_songs['distrokid'] == True]
-
     for index, row in latest_top_songs.iterrows():
-        # Fetch song details from Spotify
-        search_results = spotify.search(q=f"track:{row['title']} artist:{row['author']}", type='track')
-        if search_results['tracks']['items']:
-            track = search_results['tracks']['items'][0]
-            album_cover_url = track['album']['images'][0]['url']
-            preview_url = track['preview_url']
+        try:
+            # Fetch song details from Spotify
+            search_results = spotify.search(q=f"track:{row['title']} artist:{row['author']}", type='track')
+            if search_results['tracks']['items']:
+                track = search_results['tracks']['items'][0]
+                album_cover_url = track['album']['images'][0]['url']
+                preview_url = track['preview_url']
 
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                if album_cover_url:
-                    st.image(album_cover_url, use_column_width=True)
-                    if preview_url:
-                        st.audio(preview_url, format='audio/mp3')
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if album_cover_url:
+                        st.image(album_cover_url, use_column_width=True)
+                        if preview_url:
+                            st.audio(preview_url, format='audio/mp3')
 
-            with col2:
-                st.subheader(row['title'])
-                st.write(f"**Author:** {row['author']}")
-                
-                # Calculate popularity and view count changes
-                previous_day_data = song_data_df[(song_data_df['title'] == row['title']) & 
-                                                 (song_data_df['author'] == row['author']) & 
-                                                 (song_data_df['timestamp'] < latest_timestamp)].sort_values('timestamp').tail(1)
-
-                if not previous_day_data.empty:
-                    prev_popularity = previous_day_data.iloc[0]['popularity']
-                    prev_view_count = previous_day_data.iloc[0].get('viewCount', None)
-
-                    popularity_change = row['popularity'] - prev_popularity
-                    if popularity_change > 0:
-                        st.write(f"**Popularity:** {row['popularity']} (⬆️ {popularity_change})")
-                    elif popularity_change < 0:
-                        st.write(f"**Popularity:** {row['popularity']} (⬇️ {popularity_change})")
-                    else:
-                        st.write(f"**Popularity:** {row['popularity']} (No change)")
-
-                    if prev_view_count is not None and 'viewCount' in row and row['viewCount'] is not None:
-                        view_count_change = row['viewCount'] - prev_view_count
-                        if prev_view_count > 0:
-                            view_count_percentage_change = (view_count_change / prev_view_count) * 100
-                            color = 'red'
-                            if view_count_percentage_change >= 30:
-                                color = 'blue'
-                            elif view_count_percentage_change >= 10:
-                                color = 'lightgreen'
-                            st.markdown(f"**View Count:** {row['viewCount']} (<span style='color:{color}'>+{view_count_percentage_change:.2f}%</span>)", unsafe_allow_html=True)
-                        else:
-                            st.write(f"**View Count:** {row['viewCount']} (N/A)")
-                    else:
-                        st.write(f"**View Count:** {row.get('viewCount', 'N/A')}")
-                else:
+                with col2:
+                    st.subheader(row['title'])
+                    st.write(f"**Author:** {row['author']}")
+                    
+                    # Display popularity
                     st.write(f"**Popularity:** {row['popularity']}")
-                    st.write(f"**View Count:** {row.get('viewCount', 'N/A')}")
 
+                    # Display stream count
+                    stream_count_data = row.get('streamCountData', {})
+                    if isinstance(stream_count_data, dict):
+                        latest_date = max(stream_count_data.keys(), default=None)
+                        if latest_date:
+                            latest_count = stream_count_data[latest_date].get('total', 'N/A')
 
+                            # Fetch stream counts for the last three days
+                            stream_counts_last_three_days = []
+                            stream_dates_last_three_days = sorted(stream_count_data.keys(), reverse=True)[:3]
 
-# # Button to upload JSON files (for temporary use)
-# if st.button('Upload JSON files'):
-#     db.upload_json_files()
-#     st.success('Files uploaded successfully!')
+                            for date in stream_dates_last_three_days:
+                                count = stream_count_data.get(date, {}).get('total', 0)
+                                stream_counts_last_three_days.append(count)
 
-# # Button to delete all songs
-# if st.button('Delete all songs'):
-#     result = db.delete_all_songs()
-#     st.success(result)
+                            # Calculate the change in stream counts
+                            if len(stream_counts_last_three_days) >= 3:
+                                stream_diff = stream_counts_last_three_days[0] - stream_counts_last_three_days[1]
+                                stream_second_diff = (stream_counts_last_three_days[0] - stream_counts_last_three_days[1]) - \
+                                                     (stream_counts_last_three_days[1] - stream_counts_last_three_days[2])
+                                color = 'white'
+                                if stream_second_diff > 10:
+                                    color = 'green'
+                                elif stream_second_diff < 0:
+                                    color = 'red'
+                                st.markdown(f"**Stream Count:** {latest_count} (<span style='color:{color}'>+{stream_diff}</span>)", unsafe_allow_html=True)
+                            else:
+                                st.write(f"**Stream Count:** {latest_count} (N/A)")
+                        else:
+                            st.write("**Stream Count:** N/A (No date available)")
+                    else:
+                        st.write("**Stream Count:** N/A (No stream count data)")
 
+                    st.write(f"**Description:** {row['description']}")
+        except Exception as e:
+            logging.error(f"Error displaying song {row['title']}: {str(e)}")
+            st.error(f"Error displaying song {row['title']}: {str(e)}")
+
+# Button to upload JSON files (for dev use)
+if st.button('Upload JSON files'):
+    try:
+        db.upload_json_files()
+        st.success('Files uploaded successfully!')
+    except Exception as e:
+        st.error(f"Error uploading JSON files: {e}")
+
+# Button to delete all songs (for dev use)
+if st.button('Delete all songs'):
+    try:
+        result = db.delete_all_songs()
+        st.success(result)
+    except Exception as e:
+        st.error(f"Error deleting all songs: {e}")
