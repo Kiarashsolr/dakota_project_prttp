@@ -37,6 +37,16 @@ st.sidebar.image('company_logo.svg', width=50)  # Adjust width to make the logo 
 
 st.sidebar.title("Dakota")
 
+# Distributor Filters
+st.sidebar.header("Distributor Filters")
+
+distributors = ["DistroKid", "TuneCore", "CD Baby", "Ditto Music", "Amuse", "LANDR", "UnitedMasters", "Stem", "iMusician", "RouteNote", "Catapult Distribution", "SongCast", "Soundrop"]
+
+# Dictionary to hold checkbox states
+distributor_filters = {}
+for distributor in distributors:
+    distributor_filters[distributor] = st.sidebar.checkbox(distributor)
+
 # Week/Month Selector
 timeframe = st.sidebar.selectbox('Select timeframe', ['Week', 'Month'])
 
@@ -55,9 +65,26 @@ st.sidebar.header(f"Songs by {artist_selected}")
 songs_by_artist = db.get_songs_by_author(artist_selected)
 song_titles = [song.title for song in songs_by_artist]
 
+# Filter songs based on distributor keywords
+def filter_songs_by_distributor(songs, filters):
+    selected_distributors = [distributor.lower() for distributor, checked in filters.items() if checked]
+    if not selected_distributors:
+        return songs
+    
+    filtered_songs = []
+    for song in songs:
+        description = song.description.lower()
+        if any(distributor in description for distributor in selected_distributors):
+            filtered_songs.append(song)
+    
+    return filtered_songs
+
+filtered_songs_by_artist = filter_songs_by_distributor(songs_by_artist, distributor_filters)
+filtered_song_titles = [song.title for song in filtered_songs_by_artist]
+
 # Display song titles as buttons
 selected_song = None
-for song_title in song_titles:
+for song_title in filtered_song_titles:
     if st.sidebar.button(song_title):
         selected_song = song_title
 
@@ -242,10 +269,13 @@ else:
     latest_timestamp = song_data_df['timestamp'].max()
     latest_top_songs = song_data_df[song_data_df['timestamp'] == latest_timestamp]
 
-    for index, row in latest_top_songs.iterrows():
+    # Apply distributor filters to latest top songs
+    filtered_latest_top_songs = filter_songs_by_distributor(latest_top_songs.itertuples(index=False), distributor_filters)
+
+    for row in filtered_latest_top_songs:
         try:
             # Fetch song details from Spotify
-            search_results = spotify.search(q=f"track:{row['title']} artist:{row['author']}", type='track')
+            search_results = spotify.search(q=f"track:{row.title} artist:{row.author}", type='track')
             if search_results['tracks']['items']:
                 track = search_results['tracks']['items'][0]
                 album_cover_url = track['album']['images'][0]['url']
@@ -259,14 +289,14 @@ else:
                             st.audio(preview_url, format='audio/mp3')
 
                 with col2:
-                    st.subheader(row['title'])
-                    st.write(f"**Author:** {row['author']}")
+                    st.subheader(row.title)
+                    st.write(f"**Author:** {row.author}")
                     
                     # Display popularity
-                    st.write(f"**Popularity:** {row['popularity']}")
+                    st.write(f"**Popularity:** {row.popularity}")
 
                     # Display stream count
-                    stream_count_data = row.get('streamCountData', {})
+                    stream_count_data = row.streamCountData
                     if isinstance(stream_count_data, dict):
                         latest_date = max(stream_count_data.keys(), default=None)
                         if latest_date:
@@ -298,23 +328,7 @@ else:
                     else:
                         st.write("**Stream Count:** N/A (No stream count data)")
 
-                    st.write(f"**Description:** {row['description']}")
+                    st.write(f"**Description:** {row.description}")
         except Exception as e:
-            logging.error(f"Error displaying song {row['title']}: {str(e)}")
-            st.error(f"Error displaying song {row['title']}: {str(e)}")
-
-# # Button to upload JSON files (for dev use)
-# if st.button('Upload JSON files'):
-#     try:
-#         db.upload_json_files()
-#         st.success('Files uploaded successfully!')
-#     except Exception as e:
-#         st.error(f"Error uploading JSON files: {e}")
-
-# # Button to delete all songs (for dev use)
-# if st.button('Delete all songs'):
-#     try:
-#         result = db.delete_all_songs()
-#         st.success(result)
-#     except Exception as e:
-#         st.error(f"Error deleting all songs: {e}")
+            logging.error(f"Error displaying song {row.title}: {str(e)}")
+            st.error(f"Error displaying song {row.title}: {str(e)}")
