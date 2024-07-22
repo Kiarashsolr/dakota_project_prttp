@@ -39,6 +39,8 @@ class Song:
         self.top_regions = data.get('top_regions', [])
         self.description = data.get('description')
         self.streamCountData = data.get('streamCountData', {})
+        self.ai_predicted_data = data.get('AI predicted data', {})
+        self.expected_rank_next_day = data.get('expected_rank_next_day')
 
     def graphs_7(self, index=0):
         """
@@ -83,6 +85,11 @@ class DataLib:
             # Convert timestamp to datetime object if it's a string
             if isinstance(item.get('timestamp'), str):
                 item['timestamp'] = datetime.fromisoformat(item['timestamp'].replace('Z', '+00:00'))
+            
+            # Ensure new fields are included
+            item['AI predicted data'] = item.get('AI predicted data', {})
+            item['expected_rank_next_day'] = item.get('expected_rank_next_day')
+
         collection.insert_many(data)
         print(f"Inserted {len(data)} documents into the collection {self.collection_name}")
 
@@ -150,6 +157,8 @@ class DataLib:
                     'top_regions': data.get('top_regions', []),
                     'description': data.get('description'),
                     'streamCountData': data.get('streamCountData', {}),
+                    'ai_predicted_data': data.get('AI predicted data', {}),
+                    'expected_rank_next_day': data.get('expected_rank_next_day'),
                     'all_occurrences': [data]
                 }
             else:
@@ -174,7 +183,7 @@ class DataLib:
         # Aggregate songs by title and author
         aggregated_data = {}
         for data in song_data:
-            key = (data['title'], data['author'])
+            key = (data['title'], 'author')
             if key not in aggregated_data:
                 aggregated_data[key] = {
                     '_id': str(data['_id']),
@@ -200,6 +209,8 @@ class DataLib:
                     'top_regions': data.get('top_regions', []),
                     'description': data.get('description'),
                     'streamCountData': data.get('streamCountData', {}),
+                    'ai_predicted_data': data.get('AI predicted data', {}),
+                    'expected_rank_next_day': data.get('expected_rank_next_day'),
                     'all_occurrences': [data]
                 }
             else:
@@ -255,7 +266,50 @@ class DataLib:
             'data': stream_data
         }
 
-    # ... (keep other existing methods)
+    # New method to get AI predicted data
+    def get_ai_predicted_data(self, song_id):
+        """
+        Get the AI predicted data for a specific song.
+
+        :param song_id: str, the ID of the song
+        :return: dict, the AI predicted data for the song
+        """
+        song = self.get_song_by_id(song_id)
+        return song.ai_predicted_data if song else {}
+
+    # New method to get expected rank next day
+    def get_expected_rank_next_day(self, song_id):
+        """
+        Get the expected rank for the next day for a specific song.
+
+        :param song_id: str, the ID of the song
+        :return: int, the expected rank for the next day
+        """
+        song = self.get_song_by_id(song_id)
+        return song.expected_rank_next_day if song else None
+
+    def analyze_ai_predictions(self, song_id):
+        """
+        Analyze the AI predicted data for a specific song.
+
+        :param song_id: str, the ID of the song
+        :return: dict, analysis of the AI predicted data
+        """
+        song = self.get_song_by_id(song_id)
+        if not song or not song.ai_predicted_data:
+            return None
+
+        ai_data = song.ai_predicted_data
+        max_predicted = max(ai_data.values())
+        min_predicted = min(ai_data.values())
+        avg_predicted = sum(ai_data.values()) / len(ai_data)
+
+        return {
+            'max_predicted': max_predicted,
+            'min_predicted': min_predicted,
+            'avg_predicted': avg_predicted,
+            'data': ai_data
+        }
 
     def upload_json_files(self, directory='.'):
         """
@@ -288,17 +342,6 @@ class DataLib:
 
         print("All files have been uploaded successfully.")
 
-    # ... (keep other existing methods)
-        # Test the connection
-        try:
-            self.client.admin.command('ping')
-            print("Pinged your deployment. You successfully connected to MongoDB!")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-
-
-    
-
     def add_note_to_song(self, song_id, note):
         """
         Add a note to a specific song.
@@ -324,8 +367,6 @@ class DataLib:
             return f'Song with ID: {song_id} deleted successfully.'
         else:
             return f'Song with ID: {song_id} not found.'
-
-    
 
     def filter_by_date_range(self, start_date, end_date):
         """
@@ -404,55 +445,3 @@ class DataLib:
         collection = self.db[self.collection_name]
         result = collection.delete_many({})
         return f'Deleted {result.deleted_count} songs from the collection.'
-        
-    
-
-# Example usage (this should be in a separate script, not in the library itself):
-if __name__ == "__main__":
-    uri = "your_connection_string_here"
-    db = DataLib(uri)
-
-    # Upload JSON files from the current directory
-    db.upload_json_files()
-
-    # Retrieve data
-    df = db.get_song_data()
-    print(df)
-
-    # Retrieve songs by name
-    songs = db.get_songs_by_name('Maxed Out')
-    for song in songs:
-        print(song)
-        print(song.graphs_7())
-
-    # Retrieve songs by author
-    songs = db.get_songs_by_author('Bayker Blankenship')
-    for song in songs:
-        print(song)
-        print(song.graphs_7())
-
-    # Add a note to a song
-    if songs:
-        result = db.add_note_to_song(songs[0].id, 'This is a great song!')
-        print(result)
-
-    # Delete a song by ID
-    if songs:
-        result = db.delete_song_by_id(songs[0].id)
-        print(result)
-
-    # Filter by date range
-    filtered_df = db.filter_by_date_range('2024-06-04', '2024-06-06')
-    print(filtered_df)
-
-    # Compare top songs between two dates
-    comparison_df = db.get_top_songs_comparison('2024-06-04', '2024-06-05')
-    print(comparison_df)
-
-    # Get unique songs
-    unique_songs_df = db.get_unique_songs()
-    print(unique_songs_df)
-
-    # Get daily top songs
-    daily_top_songs_df = db.get_daily_top_songs('2024-06-04')
-    print(daily_top_songs_df)

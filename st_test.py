@@ -31,7 +31,6 @@ if passcode != app_passcode:
     st.error('Incorrect passcode')
     st.stop()
 
-
 # # Button to upload JSON files (for dev use)
 # if st.button('Upload JSON files'):
 #     try:
@@ -48,25 +47,11 @@ if passcode != app_passcode:
 #     except Exception as e:
 #         st.error(f"Error deleting all songs: {e}")
 
-
 # Sidebar
 # Add company logo
 st.sidebar.image('company_logo.svg', width=50)  # Adjust width to make the logo smaller
 
 st.sidebar.title("Dakota")
-
-# Distributor Filters
-st.sidebar.header("Distributor Filters")
-
-distributors = ["DistroKid", "TuneCore", "CD Baby", "Ditto Music", "Amuse", "LANDR", "UnitedMasters", "Stem", "iMusician", "RouteNote", "Catapult Distribution", "SongCast", "Soundrop"]
-
-# Dictionary to hold checkbox states
-distributor_filters = {}
-for distributor in distributors:
-    distributor_filters[distributor] = st.sidebar.checkbox(distributor)
-
-# Week/Month Selector
-timeframe = st.sidebar.selectbox('Select timeframe', ['Week', 'Month'])
 
 # Unique Artists List
 st.sidebar.header("Artists")
@@ -83,6 +68,25 @@ st.sidebar.header(f"Songs by {artist_selected}")
 songs_by_artist = db.get_songs_by_author(artist_selected)
 song_titles = [song.title for song in songs_by_artist]
 
+# Distributor Filters
+st.sidebar.header("Distributor Filters")
+
+distributors = ["DistroKid", "TuneCore", "CD Baby", "Ditto Music", "Amuse", "LANDR", "UnitedMasters", "Stem", "iMusician", "RouteNote", "Catapult Distribution", "SongCast", "Soundrop"]
+
+# Count occurrences of each distributor in song descriptions
+distributor_counts = {distributor: 0 for distributor in distributors}
+for song in songs_by_artist:
+    description = song.description.lower() if song.description else ''
+    for distributor in distributors:
+        if distributor.lower() in description:
+            distributor_counts[distributor] += 1
+
+# Dictionary to hold checkbox states
+distributor_filters = {}
+for distributor in distributors:
+    label = f"{distributor} ({distributor_counts[distributor]})"
+    distributor_filters[distributor] = st.sidebar.checkbox(label)
+
 # Filter songs based on distributor keywords
 def filter_songs_by_distributor(songs, filters):
     selected_distributors = [distributor.lower() for distributor, checked in filters.items() if checked]
@@ -91,7 +95,7 @@ def filter_songs_by_distributor(songs, filters):
     
     filtered_songs = []
     for song in songs:
-        description = song.description.lower()
+        description = song.description.lower() if song.description else ''
         if any(distributor in description for distributor in selected_distributors):
             filtered_songs.append(song)
     
@@ -114,9 +118,11 @@ if selected_song:
     song_data = next((song for song in songs_by_artist if song.title == selected_song), None)
     
     if song_data:
+        # Find the latest occurrence
+        latest_occurrence = max(song_data.all_occurrences, key=lambda x: x['timestamp'])
+
         # Graph of the past seven days
         try:
-            latest_occurrence = song_data.all_occurrences[-1]
             past_seven_days_graph = latest_occurrence['graph_values'][::-1]
             x_labels = list(range(-7, 0))
             fig1 = px.line(x=x_labels, y=past_seven_days_graph, labels={'x': 'Day', 'y': 'Value'}, title='Past 7 Days Graph')
@@ -132,17 +138,34 @@ if selected_song:
             st.plotly_chart(fig2)
         except Exception as e:
             st.error(f"Error displaying popularity data graph: {e}")
-        
-        # Graph of total streams and daily streams
+
+        # Display AI predicted data and expected rank next day
+        st.subheader("AI Predicted Data")
+        try:
+            expected_rank_next_day = latest_occurrence.get('expected_rank_next_day', "Not available")
+            predicted_streaming_numbers = latest_occurrence.get('AI predicted data', "Not available")
+            st.write(f"**Expected Rank Next Day:** {expected_rank_next_day}")
+            # st.write(f"**Predicted Streaming Numbers:** {predicted_streaming_numbers}")
+        except Exception as e:
+            st.error(f"Error displaying AI predicted data: {e}")
+
+        # Find the latest stream count data
+        latest_stream_data = max(song_data.all_occurrences, key=lambda x: x['timestamp'])
         try:
             total_stream_counts = []
             daily_stream_counts = []
             stream_count_dates = []
-            for date, counts in song_data.streamCountData.items():
+
+            for date, counts in latest_stream_data['streamCountData'].items():
                 if counts['total'] is not None:
                     total_stream_counts.append(counts['total'])
                     daily_stream_counts.append(counts['daily'] if counts['daily'] is not None else 0)
                     stream_count_dates.append(date)
+            
+            # Sorting dates to make sure we append predicted dates correctly
+            stream_count_dates = pd.to_datetime(stream_count_dates).sort_values().strftime('%Y-%m-%d').tolist()
+            predicted_dates = [pd.to_datetime(stream_count_dates[-1]) + pd.Timedelta(days=i) for i in range(1, 8)]
+            predicted_values = [predicted_streaming_numbers.get(f'day_{i}', 0) for i in range(1, 8)]
             
             if total_stream_counts and stream_count_dates:  # Ensure there is data to plot
                 fig3 = go.Figure()
@@ -156,26 +179,22 @@ if selected_song:
                     yaxis='y1'
                 ))
 
-                # Add daily stream counts as a bar trace
-                fig3.add_trace(go.Bar(
-                    x=stream_count_dates,
-                    y=daily_stream_counts,
-                    name='Daily Streams',
-                    yaxis='y2',
-                    opacity=0.6
+                # Add predicted stream counts as a line trace with a contrasting color
+                fig3.add_trace(go.Scatter(
+                    x=predicted_dates,
+                    y=predicted_values,
+                    name='Predicted Streams',
+                    mode='lines+markers',
+                    line=dict(dash='dot', color='red'),
+                    yaxis='y1'
                 ))
 
                 fig3.update_layout(
-                    title='Total Streams and Daily Streams Over Time',
+                    title='Total Streams and Predicted Streams Over Time',
                     xaxis_title='Date',
                     yaxis=dict(
                         title='Total Streams',
                         side='left'
-                    ),
-                    yaxis2=dict(
-                        title='Daily Streams',
-                        overlaying='y',
-                        side='right'
                     ),
                     legend=dict(
                         x=0,
@@ -276,6 +295,7 @@ if selected_song:
                 st.write(f"**{region['rank']}:** {region['country']} (Score: {region['score']})")
         except Exception as e:
             st.error(f"Error displaying top regions: {e}")
+
     else:
         st.write("No data available for the selected song.")
 else:
@@ -346,6 +366,10 @@ else:
                     else:
                         st.write("**Stream Count:** N/A (No stream count data)")
 
+                    # Display expected rank next day
+                    if hasattr(row, 'expected_rank_next_day'):
+                        st.write(f"**Expected Rank Next Day:** {row.expected_rank_next_day}")
+                    
                     st.write(f"**Description:** {row.description}")
         except Exception as e:
             logging.error(f"Error displaying song {row.title}: {str(e)}")
