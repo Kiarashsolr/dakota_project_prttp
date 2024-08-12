@@ -49,7 +49,7 @@ def song_card_pagination(songs, spotify, initial_count=3, batch_size=10):
     if st.session_state['loaded_songs'] < len(songs):
         if st.button('Load More'):
             st.session_state['loaded_songs'] += batch_size
-            st.experimental_rerun()  # Rerun to load more songs
+            st.rerun()  # Rerun to load more songs
 
 def song_card(song, spotify):
     try:

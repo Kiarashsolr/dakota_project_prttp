@@ -84,7 +84,7 @@ for i, criterion in enumerate(st.session_state['criteria']):
     with col3:
         if st.button('❌', key=f'remove_{i}'):
             remove_criterion(i)
-            st.experimental_rerun()  # Immediately rerun to update the UI
+            st.rerun()  # Immediately rerun to update the UI
 
 # Add a new criterion
 if st.button('+'):
