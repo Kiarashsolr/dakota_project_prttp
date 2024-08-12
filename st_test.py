@@ -31,21 +31,21 @@ if passcode != app_passcode:
     st.error('Incorrect passcode')
     st.stop()
 
-# # Button to upload JSON files (for dev use)
-# if st.button('Upload JSON files'):
-#     try:
-#         db.upload_json_files()
-#         st.success('Files uploaded successfully!')
-#     except Exception as e:
-#         st.error(f"Error uploading JSON files: {e}")
+# Button to upload JSON files (for dev use)
+if st.button('Upload JSON files'):
+    try:
+        db.upload_json_files()
+        st.success('Files uploaded successfully!')
+    except Exception as e:
+        st.error(f"Error uploading JSON files: {e}")
 
-# # Button to delete all songs (for dev use)
-# if st.button('Delete all songs'):
-#     try:
-#         result = db.delete_all_songs()
-#         st.success(result)
-#     except Exception as e:
-#         st.error(f"Error deleting all songs: {e}")
+# Button to delete all songs (for dev use)
+if st.button('Delete all songs'):
+    try:
+        result = db.delete_all_songs()
+        st.success(result)
+    except Exception as e:
+        st.error(f"Error deleting all songs: {e}")
 
 # Sidebar
 # Add company logo
