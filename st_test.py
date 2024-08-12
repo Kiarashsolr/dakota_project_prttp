@@ -20,7 +20,7 @@ spotify = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=spotif
 db = DataLib(uri)
 
 # Streamlit App
-st.title('Enhanced A&R Dashboard')
+st.title('Gen 3 A&R Dashboard')
 
 # App passcode
 passcode = st.text_input('Enter passcode', type='password')
@@ -87,7 +87,7 @@ for i, criterion in enumerate(st.session_state['criteria']):
             st.rerun()  # Immediately rerun to update the UI
 
 # Add a new criterion
-if st.button('+'):
+if st.button('Add new criterion'):
     st.session_state['criteria'].append({'field': 'title', 'value': ''})
 
 # Apply button to filter the data
@@ -104,7 +104,7 @@ if st.button('Apply'):
     if selected_timestamp:
         filtered_data = filtered_data[filtered_data['timestamp'] == selected_timestamp]
 
-    st.dataframe(filtered_data)
+    # st.dataframe(filtered_data)  # Commented out the table display
 
     # Display paginated song cards
     song_card_pagination(filtered_data, spotify)
@@ -119,7 +119,7 @@ else:
             if selected_timestamp:
                 song_data_df = song_data_df[song_data_df['timestamp'] == selected_timestamp]
         
-        st.dataframe(song_data_df)
+        # st.dataframe(song_data_df)  # Commented out the table display
 
         # Display paginated song cards
         song_card_pagination(song_data_df, spotify)
